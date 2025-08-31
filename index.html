@@ -1,0 +1,222 @@
+# Build a full one-page, white-background dashboard with ALL sliders and the full model.
+# Pressing "Run" renders the graph. No CSV button.
+import os, zipfile
+
+html = r"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HACS Agrifuel — Full One-Page Dashboard</title>
+<style>
+  :root{--line:#e5e7eb;--ink:#111827;--muted:#4b5563;--blue:#2563eb;--green:#16a34a;--amber:#d97706;--violet:#7c3aed;}
+  *{box-sizing:border-box}
+  body{margin:0;background:#fff;color:var(--ink);font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  header{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line)}
+  header h1{margin:0;font-size:16px}
+  button{border:1px solid var(--line);background:#111827;color:#fff;border-radius:10px;padding:8px 12px;cursor:pointer}
+  .main{display:grid;grid-template-columns:520px 1fr;gap:10px;padding:10px}
+  .panel{border:1px solid var(--line);border-radius:12px;padding:8px 10px;margin:8px 0}
+  .panel h3{margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+  .row{display:grid;grid-template-columns:1fr 86px;gap:8px;align-items:center;margin:6px 0}
+  .slider{display:grid;grid-template-columns:1fr 72px;gap:6px;align-items:center}
+  input[type=range]{width:100%}
+  input[type=number]{width:100%;border:1px solid var(--line);border-radius:8px;padding:4px 6px;font-size:12px}
+  label{font-size:12px}
+  .legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:#374151;margin-bottom:6px}
+  .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:middle}
+  #canvas{width:100%;height:520px;border:1px solid var(--line);border-radius:12px}
+  .foot{border-top:1px solid var(--line);color:#6b7280;font-size:12px;padding:6px 10px;display:flex;justify-content:space-between}
+</style>
+</head>
+<body>
+  <header>
+    <h1>HACS Agrifuel — Full One-Page Dashboard</h1>
+    <button id="runBtn">Run</button>
+  </header>
+
+  <div class="main">
+    <section>
+      <div class="panel">
+        <h3>Time</h3>
+        <div class="row slider"><label>Initial Year <b id="labY0">2024</b></label><input id="Y0" type="range" min="1990" max="2040" step="1" value="2024"><input id="Y0n" type="number" value="2024"></div>
+        <div class="row slider"><label>Final Year <b id="labY1">2050</b></label><input id="Y1" type="range" min="2030" max="2100" step="1" value="2050"><input id="Y1n" type="number" value="2050"></div>
+        <div class="row slider"><label>Time Step (yr) <b id="labDT">1</b></label><input id="DT" type="range" min="0.25" max="2" step="0.25" value="1"><input id="DTn" type="number" step="0.25" value="1"></div>
+      </div>
+
+      <div class="panel">
+        <h3>Initial Stocks</h3>
+        <div class="row slider"><label>Potential Land (ha) <b id="labPot">125000</b></label><input id="initPotential" type="range" min="1000" max="300000" step="1000" value="125000"><input id="initPotentialn" type="number" value="125000"></div>
+        <div class="row slider"><label>Converted to Hemp (ha) <b id="labHemp">23.42</b></label><input id="initHemp" type="range" min="0" max="200000" step="0.5" value="23.42"><input id="initHempn" type="number" step="0.01" value="23.42"></div>
+        <div class="row slider"><label>Desired Emissions (t/yr) <b id="labDes">100000</b></label><input id="initDesired" type="range" min="0" max="200000" step="1000" value="100000"><input id="initDesiredn" type="number" value="100000"></div>
+        <div class="row slider"><label>Avg Emissions init (t/yr) <b id="labAvg">25150</b></label><input id="initAvg" type="range" min="0" max="200000" step="100" value="25150"><input id="initAvgn" type="number" value="25150"></div>
+      </div>
+
+      <div class="panel">
+        <h3>Parameters</h3>
+        <div class="row slider"><label>Adjustment Time Avg (yr) <b id="labAdj">1</b></label><input id="adjTime" type="range" min="0.25" max="10" step="0.25" value="1"><input id="adjTimen" type="number" step="0.25" value="1"></div>
+        <div class="row slider"><label>Emissions per ha (t/yr/ha) <b id="labEha">0.2012</b></label><input id="emiPerHa" type="range" min="0" max="2" step="0.0001" value="0.2012"><input id="emiPerHan" type="number" step="0.0001" value="0.2012"></div>
+        <div class="row slider"><label>Sequestration rate (t/yr/ha) <b id="labSeq">10</b></label><input id="seqRate" type="range" min="0" max="30" step="0.1" value="10"><input id="seqRaten" type="number" step="0.1" value="10"></div>
+        <div class="row slider"><label>Frac decrease desired (1/yr) <b id="labFrac">0.01</b></label><input id="fracDecrease" type="range" min="0" max="0.1" step="0.0005" value="0.01"><input id="fracDecreasen" type="number" step="0.0005" value="0.01"></div>
+        <div class="row slider"><label>Min acceptable emissions (t/yr) <b id="labMin">1000</b></label><input id="minAccept" type="range" min="0" max="200000" step="500" value="1000"><input id="minAcceptn" type="number" step="100" value="1000"></div>
+        <div class="row slider"><label>Transition time (yr) <b id="labTrans">1</b></label><input id="transTime" type="range" min="0.25" max="10" step="0.25" value="1"><input id="transTimen" type="number" step="0.25" value="1"></div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:6px"><input id="clampEmi" type="checkbox" checked><label for="clampEmi" style="font-size:12px">Clamp negative emissions to 0</label></div>
+      </div>
+
+      <div class="panel">
+        <h3>Lookups (Ratio = Avg/Desired)</h3>
+        <div class="row slider"><label>To Hemp @ Ratio 0 <b id="labTo0">0.05</b></label><input id="to0" type="range" min="0" max="0.2" step="0.0005" value="0.05"><input id="to0n" type="number" step="0.0005" value="0.05"></div>
+        <div class="row slider"><label>To Hemp @ Ratio 1 <b id="labTo1">0.03</b></label><input id="to1" type="range" min="0" max="0.2" step="0.0005" value="0.03"><input id="to1n" type="number" step="0.0005" value="0.03"></div>
+        <div class="row slider"><label>To Hemp @ Ratio 2 <b id="labTo2">0.01</b></label><input id="to2" type="range" min="0" max="0.2" step="0.0005" value="0.01"><input id="to2n" type="number" step="0.0005" value="0.01"></div>
+        <div class="row slider"><label>From Hemp @ Ratio 0 <b id="labFr0">0.10</b></label><input id="fr0" type="range" min="0" max="0.5" step="0.0005" value="0.10"><input id="fr0n" type="number" step="0.0005" value="0.10"></div>
+        <div class="row slider"><label>From Hemp @ Ratio 1 <b id="labFr1">0.15</b></label><input id="fr1" type="range" min="0" max="0.5" step="0.0005" value="0.15"><input id="fr1n" type="number" step="0.0005" value="0.15"></div>
+        <div class="row slider"><label>From Hemp @ Ratio 2 <b id="labFr2">0.25</b></label><input id="fr2" type="range" min="0" max="0.5" step="0.0005" value="0.25"><input id="fr2n" type="number" step="0.0005" value="0.25"></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="legend">
+        <span><span class="dot" style="background:var(--blue)"></span>Potential Land</span>
+        <span><span class="dot" style="background:var(--green)"></span>Converted to Hemp</span>
+        <span><span class="dot" style="background:var(--amber)"></span>BISS 2020–2023</span>
+        <span><span class="dot" style="background:var(--violet)"></span>HPRA 2017–2023</span>
+      </div>
+      <canvas id="canvas"></canvas>
+    </section>
+  </div>
+
+  <div class="foot">
+    <div>One screen · White background · Press Run to draw the lines using the current sliders</div>
+    <div id="status"></div>
+  </div>
+
+<script>
+// ---------- Binding helpers ----------
+function bind(idRange,idNum,labelId,fmt=(v)=>String(v)){
+  const r=document.getElementById(idRange), n=document.getElementById(idNum), lab=document.getElementById(labelId);
+  function sync(to){ if(to==='num'){ n.value=r.value; } else { r.value=n.value; } lab.textContent=fmt(Number(r.value)); }
+  r.addEventListener('input', ()=>sync('num')); n.addEventListener('input', ()=>sync('range')); sync('num');
+}
+['Y0','Y1','DT','initPotential','initHemp','initDesired','initAvg','adjTime','emiPerHa','seqRate','fracDecrease','minAccept','transTime','to0','to1','to2','fr0','fr1','fr2'].forEach(id=>{
+  const map={Y0:'labY0',Y1:'labY1',DT:'labDT',initPotential:'labPot',initHemp:'labHemp',initDesired:'labDes',initAvg:'labAvg',adjTime:'labAdj',emiPerHa:'labEha',seqRate:'labSeq',fracDecrease:'labFrac',minAccept:'labMin',transTime:'labTrans',to0:'labTo0',to1:'labTo1',to2:'labTo2',fr0:'labFr0',fr1:'labFr1',fr2:'labFr2'};
+  bind(id, id+'n', map[id], (v)=>{
+    if(['Y0','Y1'].includes(id)) return v.toFixed(0);
+    if(['emiPerHa'].includes(id)) return v.toFixed(4);
+    if(['seqRate'].includes(id)) return v.toFixed(1);
+    if(['adjTime','DT','transTime'].includes(id)) return v.toFixed(2);
+    if(['fracDecrease','to0','to1','to2','fr0','fr1','fr2'].includes(id)) return v.toFixed(4);
+    return String(Math.round(v*100)/100);
+  });
+});
+
+// ---------- Data ----------
+const HIST_BISS=[[2020,23.42],[2021,41.5],[2022,18.39],[2023,78.98]];
+const HIST_HPRA=[[2017,76],[2018,230],[2019,547],[2020,362],[2021,251],[2022,163],[2023,114]];
+
+// ---------- Inputs ----------
+function P(){
+  const g=id=>Number(document.getElementById(id).value);
+  return {
+    Y0:g('Y0'), Y1:g('Y1'), dt:g('DT'),
+    initPotential:g('initPotential'), initHemp:g('initHemp'),
+    initDesired:g('initDesired'), initAvg:g('initAvg'),
+    adjTime:g('adjTime'), emiPerHa:g('emiPerHa'), seqRate:g('seqRate'),
+    fracDec:g('fracDecrease'), minAccept:g('minAccept'), transTime:g('transTime'),
+    to0:g('to0'), to1:g('to1'), to2:g('to2'),
+    fr0:g('fr0'), fr1:g('fr1'), fr2:g('fr2'),
+    clampEmi: document.getElementById('clampEmi').checked
+  };
+}
+
+// ---------- Lookups ----------
+function eff3(r,a,b,c){ r=Math.max(0,Math.min(2,r)); if(r<=1) return a+(b-a)*r; return b+(c-b)*(r-1); }
+
+// ---------- Simulation ----------
+function simulate(){
+  const p=P();
+  let t=p.Y0, Potential=p.initPotential, Hemp=p.initHemp, Desired=p.initDesired, Avg=p.initAvg;
+  const rows=[];
+  if(!(p.Y1>=p.Y0) || !(p.dt>0)) return rows;
+  while(t<=p.Y1+1e-9){
+    let Emissions=Potential*p.emiPerHa - Hemp*p.seqRate;
+    if(p.clampEmi && Emissions<0) Emissions=0;
+    const ratio=Math.max(0, Avg/Math.max(1e-9,Desired));
+    const eTo=eff3(ratio,p.to0,p.to1,p.to2);
+    const eFrom=eff3(ratio,p.fr0,p.fr1,p.fr2);
+    let toHemp=Potential*eTo/Math.max(1e-9,p.transTime);
+    let fromHemp=Hemp*eFrom/Math.max(1e-9,p.transTime);
+    // cap per step so we don't empty a stock in one step
+    toHemp=Math.min(toHemp, Potential/Math.max(1e-9,p.dt));
+    fromHemp=Math.min(fromHemp, Hemp/Math.max(1e-9,p.dt));
+    Potential+=(fromHemp-toHemp)*p.dt;
+    Hemp+=(toHemp-fromHemp)*p.dt;
+    const effectMin=(Desired/Math.max(1e-9,p.minAccept)-1);
+    const desiredReductions=p.fracDec*effectMin*Desired;
+    Desired+=(-desiredReductions)*p.dt; if(Desired<p.minAccept) Desired=p.minAccept;
+    const net=(Emissions-Avg)/Math.max(1e-9,p.adjTime); Avg+=net*p.dt; if(Avg<0) Avg=0;
+    rows.push({year:t,Potential,Hemp,Emissions,Avg,Desired,toHemp,fromHemp,ratio});
+    t+=p.dt;
+  }
+  return rows;
+}
+
+// ---------- Drawing ----------
+const canvas=document.getElementById('canvas'); const ctx=canvas.getContext('2d');
+function sizeCanvas(){
+  const dpr=window.devicePixelRatio||1; const ch=520;
+  canvas.style.height=ch+'px';
+  const cw=canvas.clientWidth||900;
+  canvas.width=cw*dpr; canvas.height=ch*dpr; ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+function draw(){
+  sizeCanvas();
+  const rows=simulate(); window._rows=rows;
+  const W=canvas.clientWidth||900, H=520, pad=46;
+  ctx.clearRect(0,0,W,H);
+  const status=document.getElementById('status');
+  if(!rows.length){ status.textContent='(Set Final Year >= Initial Year and dt>0, then press Run)'; return; }
+  status.textContent='';
+  const x0=rows[0].year, x1=rows[rows.length-1].year;
+  const yMin=0, yMax=Math.max(...rows.map(r=>Math.max(r.Potential,r.Hemp,1)));
+  const sx=x=>pad+(x-x0)/(x1-x0)*(W-2*pad);
+  const sy=y=>H-pad-(y-yMin)/(yMax-yMin)*(H-2*pad);
+  // axes & grid
+  ctx.strokeStyle='#e5e7eb'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(pad,H-pad); ctx.lineTo(W-pad,H-pad); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(pad,pad); ctx.lineTo(pad,H-pad); ctx.stroke();
+  ctx.fillStyle='#6b7280'; ctx.font='11px Inter, system-ui, sans-serif';
+  for(let i=0;i<=6;i++){ const gy=pad+i*(H-2*pad)/6, val=yMax-i*(yMax-yMin)/6;
+    ctx.strokeStyle='#f3f4f6'; ctx.beginPath(); ctx.moveTo(pad,gy); ctx.lineTo(W-pad,gy); ctx.stroke();
+    ctx.fillText(String(Math.round(val)), pad-8, gy+4);
+  }
+  for(let i=0;i<=10;i++){ const xv=x0+i*(x1-x0)/10, gx=sx(xv); ctx.fillText(String(Math.round(xv)), gx-8, H-pad+14); }
+  // series
+  function line(key,color){ ctx.strokeStyle=color; ctx.lineWidth=2.2; ctx.beginPath();
+    rows.forEach((r,i)=>{ const x=sx(r.year), y=sy(r[key]); if(i===0)ctx.moveTo(x,y); else ctx.lineTo(x,y);}); ctx.stroke(); }
+  line('Potential', getComputedStyle(document.documentElement).getPropertyValue('--blue').trim() || '#2563eb');
+  line('Hemp', getComputedStyle(document.documentElement).getPropertyValue('--green').trim() || '#16a34a');
+  // historic dots
+  function dot(x,y,c){ ctx.fillStyle=c; ctx.beginPath(); ctx.arc(x,y,3,0,Math.PI*2); ctx.fill(); }
+  const amber=getComputedStyle(document.documentElement).getPropertyValue('--amber').trim() || '#d97706';
+  const violet=getComputedStyle(document.documentElement).getPropertyValue('--violet').trim() || '#7c3aed';
+  HIST_BISS.forEach(([yy,v])=>{ const x=sx(yy), y=sy(v); if(x>pad&&x<W-pad) dot(x,y,amber); });
+  HIST_HPRA.forEach(([yy,v])=>{ const x=sx(yy), y=sy(v); if(x>pad&&x<W-pad) dot(x,y,violet); });
+}
+document.getElementById('runBtn').addEventListener('click', draw);
+window.addEventListener('resize', ()=>{ if(window._rows && window._rows.length) draw(); });
+</script>
+</body>
+</html>
+"""
+
+out_dir = "/mnt/data/hacs_agrifuel_full_onepage"
+os.makedirs(out_dir, exist_ok=True)
+html_path = os.path.join(out_dir, "index.html")
+with open(html_path, "w", encoding="utf-8") as f:
+    f.write(html)
+
+zip_path = "/mnt/data/hacs_agrifuel_full_onepage.zip"
+with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
+    z.write(html_path, "index.html")
+
+zip_path
