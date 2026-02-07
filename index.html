@@ -28,7 +28,11 @@
 <body>
   <header>
     <h1>HACS Agrifuel — Full One-Page Dashboard</h1>
-    <button id="runBtn">Run</button>
+<div style="display:flex;gap:8px">
+  <button id="runBtn">Run</button>
+  <button id="resetBtn" style="background:#374151">Reset to Defaults</button>
+</div>
+
   </header>
 
   <div class="main">
@@ -104,6 +108,39 @@ function bind(idRange,idNum,labelId,fmt=(v)=>String(v)){
     return String(Math.round(v*100)/100);
   });
 });
+
+  // ---------- Defaults & Reset ----------
+const DEFAULTS = {};
+
+function captureDefaults() {
+  document.querySelectorAll('input').forEach(el => {
+    if (!el.id) return;
+    DEFAULTS[el.id] = (el.type === 'checkbox') ? el.checked : el.value;
+  });
+}
+
+function resetToDefaults() {
+  Object.entries(DEFAULTS).forEach(([id, val]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+
+    if (el.type === 'checkbox') {
+      el.checked = val;
+    } else {
+      el.value = val;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  });
+
+  draw(); // re-run simulation after reset
+}
+
+// capture defaults once on page load
+captureDefaults();
+
+// wire reset button
+document.getElementById('resetBtn').addEventListener('click', resetToDefaults);
+
 
 // ---------- Data ----------
 const HIST_BISS=[[2020,23.42],[2021,41.5],[2022,18.39],[2023,78.98]];
