@@ -1,8 +1,4 @@
-# Build a full one-page, white-background dashboard with ALL sliders and the full model.
-# Pressing "Run" renders the graph. No CSV button.
-import os, zipfile
-
-html = r"""<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -207,16 +203,4 @@ window.addEventListener('resize', ()=>{ if(window._rows && window._rows.length) 
 </script>
 </body>
 </html>
-"""
 
-out_dir = "/mnt/data/hacs_agrifuel_full_onepage"
-os.makedirs(out_dir, exist_ok=True)
-html_path = os.path.join(out_dir, "index.html")
-with open(html_path, "w", encoding="utf-8") as f:
-    f.write(html)
-
-zip_path = "/mnt/data/hacs_agrifuel_full_onepage.zip"
-with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
-    z.write(html_path, "index.html")
-
-zip_path
